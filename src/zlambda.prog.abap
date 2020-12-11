@@ -6,6 +6,8 @@ interface lif_lambda_result.
   methods obj returning value(r_val) type ref to object.
   methods struc changing cs_struc type any.
   methods tab changing ct_tab type any table.
+  methods raw_ref returning value(r_data) type ref to data.
+  methods tab_deref changing ct_tab type standard table. " redo to hashed/sorted
 
 endinterface.
 
@@ -38,11 +40,13 @@ class lcl_lambda_result definition final.
     class-methods wrap
       importing
         i_result type any
+        iv_tab_of_refs type abap_bool default abap_false
       returning
         value(ri_result) type ref to lif_lambda_result.
 
   private section.
     data mr_data type ref to data.
+    data mv_tab_of_refs type abap_bool.
 
 endclass.
 
@@ -66,6 +70,7 @@ class lcl_lambda_result implementation.
     assign lo_result->mr_data->* to <val>.
     <val> = i_result.
 
+    lo_result->mv_tab_of_refs = iv_tab_of_refs.
     ri_result = lo_result.
 
   endmethod.
@@ -92,7 +97,7 @@ class lcl_lambda_result implementation.
     assign mr_data->* to <val>.
     describe field <val> type l_type.
 
-    if l_type ca 'i'. " fp ?
+    if l_type ca 'Ifp'. " fp ?
       r_val = <val>.
     endif.
 
@@ -133,14 +138,47 @@ class lcl_lambda_result implementation.
     field-symbols <val> type any.
     data l_type type c.
 
-    assign mr_data->* to <val>.
-    describe field <val> type l_type.
-
-    if l_type ca 'h'.
-      ct_tab = <val>.
+    if mv_tab_of_refs = abap_true.
+      lif_lambda_result~tab_deref( changing ct_tab = ct_tab ).
     else.
-      clear ct_tab. " Or raise an exception ?
+
+      assign mr_data->* to <val>.
+      describe field <val> type l_type.
+
+      if l_type ca 'h'.
+        ct_tab = <val>.
+      else.
+        clear ct_tab. " Or raise an exception ?
+      endif.
+
     endif.
+
+  endmethod.
+
+  method lif_lambda_result~raw_ref.
+    r_data = mr_data.
+  endmethod.
+
+  method lif_lambda_result~tab_deref.
+
+    data lo_type type ref to cl_abap_typedescr.
+    lo_type = cl_abap_typedescr=>describe_by_data_ref( mr_data ).
+    if lo_type->type_kind <> lo_type->typekind_table.
+      return.
+    endif.
+
+    field-symbols <tab> type any table.
+    field-symbols <ref> type ref to data.
+    field-symbols <val> type any.
+    field-symbols <dst> type any.
+
+    clear ct_tab.
+    assign mr_data->* to <tab>.
+    loop at <tab> assigning <ref>.
+      append initial line to ct_tab assigning <dst>. " will not work with sorted/hashed
+      assign <ref>->* to <val>.
+      <dst> = <val>.
+    endloop.
 
   endmethod.
 
